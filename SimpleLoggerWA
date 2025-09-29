@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimpleLogger Web App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // By default, Tailwind uses the browser's theme. This configures it to use a class-based toggle.
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        // This script is placed in the <head> to execute before the body renders.
+        // It checks for a saved theme preference in localStorage or the user's OS preference
+        // to apply the 'dark' class to the root <html> element, preventing a "flash" of the wrong theme on load.
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        
+        // This sets the base font size for scaling with rem units, preventing a "flash" of the wrong size.
+        const savedSize = localStorage.getItem('displaySize') || 'md';
+        const sizeMap = { sm: '12px', md: '15px', lg: '18px' };
+        document.documentElement.style.fontSize = sizeMap[savedSize];
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Simple transition for modal */
+        #modal.hidden {
+            display: none;
+        }
+        #modal {
+            background-color: rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200 transition-colors duration-300">
+
+    <!-- Main Container -->
+    <div class="container mx-auto p-4 pb-8 lg:p-8">
+        
+        <header class="mb-6 text-center">
+            <h1 class="text-4xl font-bold text-slate-900 dark:text-slate-100">SimpleLogger</h1>
+            <p class="text-slate-500 mt-1 dark:text-slate-400">A lightweight QSO logger for amateur radio.</p>
+        </header>
+
+        <!-- Responsive Grid Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 lg:gap-8">
+
+            <!-- Left Column: Inputs and Forms -->
+            <div class="lg:col-span-1 flex flex-col gap-6">
+                
+                <!-- Callsign Lookup Card -->
+                <section id="callsignLookupSection" class="bg-white p-6 rounded-lg shadow-sm dark:bg-slate-800">
+                    <h2 class="text-xl font-semibold mb-4">Log Callsign</h2>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input type="text" id="callsign" placeholder="Enter Callsign (e.g., W1AW)" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                        <button id="lookupButton" class="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-md transition-colors shadow-sm w-full sm:w-auto flex-shrink-0">Lookup</button>
+                    </div>
+                </section>
+
+                <!-- Unified Callsign Information Display -->
+                <section id="callsignInfo" class="hidden bg-white p-4 rounded-lg shadow-sm dark:bg-slate-800">
+                    <button id="infoToggle" class="w-full text-left">
+                        <div class="flex justify-between items-center">
+                            <h2 id="callsignInfoTitle" class="text-lg font-semibold">Lookup Result</h2>
+                            <svg id="infoChevron" class="w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                        <p id="infoSummary" class="text-sm mt-1 text-slate-500 dark:text-slate-400"></p>
+                    </button>
+                    <div id="info-content-details" class="hidden mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-2 text-sm">
+                        <!-- Details go here -->
+                    </div>
+                </section>
+
+                <!-- QSO Logging Form Card -->
+                <section id="loggingSection" class="bg-white p-5 rounded-lg shadow-sm dark:bg-slate-800">
+                    <h2 class="text-xl font-semibold mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">Log New QSO</h2>
+                    
+                    <!-- My Info Section -->
+                    <div class="mt-3">
+                        <h3 class="text-lg font-medium text-slate-800 dark:text-slate-200 mb-2">My Information</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+                            <div>
+                                <label for="operatorCallsign" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">My Callsign <span class="text-red-500">*</span></label>
+                                <input type="text" id="operatorCallsign" placeholder="e.g., K7XYZ" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                            <div>
+                                <label for="myGridsquare" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">My Grid</label>
+                                <input type="text" id="myGridsquare" placeholder="e.g., DN40" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- QSO Details Section -->
+                    <div class="mt-5 pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <h3 class="text-lg font-medium text-slate-800 dark:text-slate-200 mb-2">QSO Details</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+                            <div>
+                                <label for="name" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Their Name</label>
+                                <input type="text" id="name" placeholder="e.g., John Doe" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                            <div>
+                                <label for="frequency" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Frequency/Band</label>
+                                <input type="text" id="frequency" placeholder="e.g., 14.250 or 20m" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                            <div>
+                                <label for="mode" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Mode</label>
+                                <select id="mode" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200">
+                                    <option value="SSB">SSB</option>
+                                    <option value="CW">CW</option>
+                                    <option value="FM">FM</option>
+                                    <option value="AM">AM</option>
+                                    <option value="FT8">FT8</option>
+                                    <option value="FT4">FT4</option>
+                                    <option value="JS8">JS8</option>
+                                    <option value="RTTY">RTTY</option>
+                                    <option value="Digital">Other Digital</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div>
+                               <label for="gridsquare" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Their Grid</label>
+                               <input type="text" id="gridsquare" placeholder="e.g., FN31" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                             <div>
+                                <label for="rstSent" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">RST Sent</label>
+                                <input type="text" id="rstSent" placeholder="e.g., 59" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                            <div>
+                                <label for="rstReceived" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">RST Rcvd</label>
+                                <input type="text" id="rstReceived" placeholder="e.g., 59" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                             <div class="md:col-span-2">
+                                 <label for="notes" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Notes</label>
+                                 <input type="text" id="notes" placeholder="e.g., Good signal!" class="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:placeholder-slate-400 dark:text-slate-200">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-5">
+                        <button id="logQSOButton" class="w-full bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700 text-white font-bold px-4 py-2.5 rounded-md transition-colors shadow-sm">Log QSO</button>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column: Log Table and Actions -->
+            <div class="lg:col-span-1 flex flex-col gap-6 mt-6 lg:mt-0">
+                <section id="logTableContainer" class="bg-white p-2 sm:p-4 rounded-lg shadow-sm h-full flex flex-col overflow-hidden dark:bg-slate-800">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 p-4 sm:p-2">
+                         <div>
+                            <h2 class="text-xl font-semibold">QSO Log</h2>
+                            <div id="qsoCounter" class="text-sm text-slate-500 dark:text-slate-400">
+                                QSOs Logged: <span id="qsoCountValue" class="font-bold">0</span>
+                            </div>
+                         </div>
+                        <div class="relative mt-3 lg:mt-0">
+                            <!-- This button will be used for both mobile (modal) and desktop (dropdown) -->
+                            <button id="logActionsButton" class="text-sm bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-600 dark:hover:bg-slate-700 dark:text-slate-200 font-semibold px-4 py-1.5 rounded-md transition-colors shadow-sm flex items-center gap-2">
+                                Log Actions
+                                <svg class="w-4 h-4 transition-transform hidden lg:block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </button>
+                            <!-- Desktop Dropdown Menu -->
+                            <div id="logActionsMenu" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 hidden ring-1 ring-black ring-opacity-5 dark:bg-slate-700 dark:ring-slate-600">
+                                <button id="importLogDropdownButton" class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-600">Import CSV</button>
+                                <button id="exportADIFDropdownButton" class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-600">Export ADIF</button>
+                                <button id="exportCSVDropdownButton" class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-600">Export CSV</button>
+                                <div class="border-t my-1 border-slate-200 dark:border-slate-600"></div>
+                                <button id="clearLogDropdownButton" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/50">Clear Log</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Desktop Table View -->
+                    <div class="overflow-auto flex-grow hidden lg:block">
+                        <table id="logTable" class="w-full text-sm text-left">
+                            <thead class="text-xs text-slate-600 uppercase bg-slate-100 sticky top-0 dark:text-slate-300 dark:bg-slate-700">
+                                <tr>
+                                    <th scope="col" class="px-4 py-3">Date</th>
+                                    <th scope="col" class="px-4 py-3">Time</th>
+                                    <th scope="col" class="px-4 py-3">Callsign</th>
+                                    <th scope="col" class="px-4 py-3">Freq/Band</th>
+                                    <th scope="col" class="px-4 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logTableBody" class="divide-y divide-slate-200 dark:divide-slate-700">
+                                <!-- Log entries will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                     <!-- Mobile List View -->
+                    <div id="mobileLogList" class="space-y-3 lg:hidden">
+                        <!-- Mobile log entries will be inserted here -->
+                    </div>
+                </section>
+            </div>
+        </div>
+        
+        <footer class="text-center mt-8">
+            <div id="versionTag" class="text-xs text-slate-500 dark:text-slate-400 flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-4">
+                <button id="displayOptionsButton" class="order-first sm:order-none font-medium text-blue-600 dark:text-blue-400 hover:underline">Display Options</button>
+                <button id="creditsButton" class="font-medium text-blue-600 dark:text-blue-400 hover:underline">Credits</button>
+            </div>
+        </footer>
+
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 flex items-center max-w-xs p-4 space-x-4 text-slate-500 bg-white divide-x divide-slate-200 rounded-lg shadow-lg opacity-0 translate-y-5 transition-all duration-300 pointer-events-none dark:bg-slate-800 dark:text-slate-300 dark:divide-slate-600" role="alert">
+        <div id="toast-icon" class="text-2xl"></div>
+        <div id="toast-message" class="pl-4 text-sm font-normal">Message</div>
+    </div>
+    
+    <!-- Generic Modal -->
+    <div id="modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div id="modal-overlay" class="absolute inset-0 bg-black opacity-50"></div>
+        <div id="modal-content" class="bg-white rounded-lg shadow-xl p-0 m-4 max-w-lg w-full flex flex-col max-h-[90vh] z-10 dark:bg-slate-800 overflow-hidden">
+            <div id="modal-header" class="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 id="modal-title" class="text-lg font-bold text-slate-900 dark:text-slate-100">Modal Title</h3>
+                <button id="modal-close-btn" class="text-2xl font-light leading-none text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100">&times;</button>
+            </div>
+            <div id="modal-body" class="p-6 overflow-y-auto">
+                <!-- Modal content goes here -->
+            </div>
+            <div id="modal-footer" class="flex justify-end gap-3 p-4 border-t border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-700/50">
+                <!-- Modal buttons go here -->
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="csvFileInput" class="hidden" accept=".csv, text/csv">
+
+
+    <script>
+        "use strict";
+
+        // --- Application Object ---
+        const SimpleLogger = {
+            // Configuration
+            config: {
+                callookApiBaseUrl: "https://callook.info/",
+                localStorageKeys: {
+                    qsoLog: 'qsoLog',
+                    operatorCallsign: 'operatorCallsign',
+                    myGridsquare: 'myGridsquare',
+                    frequency: 'frequency',
+                    theme: 'theme',
+                    displaySize: 'displaySize'
+                }
+            },
+
+            // Application State
+            state: {
+                currentCallookInfo: null,
+                qsoLog: [],
+            },
+
+            // DOM Element References
+            elements: {},
+
+            /**
+             * --- Initialization ---
+             * The main entry point for the application. It orchestrates the setup process.
+             */
+            init() {
+                this.cacheDOMElements();
+                this.bindEventListeners();
+                this.loadInitialState();
+                this.render();
+            },
+
+            /**
+             * Caches frequently accessed DOM elements into the `this.elements` object for better performance and easier access.
+             */
+            cacheDOMElements() {
+                const el = this.elements;
+                // Main Inputs
+                el.callsignInput = document.getElementById("callsign");
+                el.operatorCallsignInput = document.getElementById("operatorCallsign");
+                el.myGridsquareInput = document.getElementById("myGridsquare");
+                el.frequencyInput = document.getElementById("frequency");
+                el.modeSelect = document.getElementById("mode");
+                el.rstSentInput = document.getElementById("rstSent");
+                el.rstReceivedInput = document.getElementById("rstReceived");
+                el.opponentGridsquareInput = document.getElementById("gridsquare");
+                el.notesInput = document.getElementById("notes");
+                el.nameInput = document.getElementById("name");
+                // Buttons
+                el.lookupButton = document.getElementById('lookupButton');
+                el.logQSOButton = document.getElementById('logQSOButton');
+                // Dropdown elements
+                el.logActionsButton = document.getElementById('logActionsButton');
+                el.logActionsMenu = document.getElementById('logActionsMenu');
+                el.importLogDropdownButton = document.getElementById('importLogDropdownButton');
+                el.exportADIFDropdownButton = document.getElementById('exportADIFDropdownButton');
+                el.exportCSVDropdownButton = document.getElementById('exportCSVDropdownButton');
+                el.clearLogDropdownButton = document.getElementById('clearLogDropdownButton');
+                // Footer Buttons
+                el.creditsButton = document.getElementById('creditsButton');
+                el.displayOptionsButton = document.getElementById('displayOptionsButton');
+                // Other elements
+                el.csvFileInput = document.getElementById('csvFileInput');
+                el.qsoCountValue = document.getElementById("qsoCountValue");
+                el.logTableBody = document.getElementById("logTableBody");
+                el.mobileLogList = document.getElementById("mobileLogList");
+                // Info Displays
+                el.callsignInfo = document.getElementById("callsignInfo");
+                el.infoToggle = document.getElementById("infoToggle");
+                el.callsignInfoTitle = document.getElementById("callsignInfoTitle");
+                el.infoSummary = document.getElementById("infoSummary");
+                el.infoChevron = document.getElementById("infoChevron");
+                el.infoContentDetails = document.getElementById("info-content-details");
+                
+                // Toast
+                el.toast = document.getElementById('toast');
+                el.toastIcon = document.getElementById('toast-icon');
+                el.toastMessage = document.getElementById('toast-message');
+                // Modal
+                el.modal = document.getElementById('modal');
+                el.modalOverlay = document.getElementById('modal-overlay');
+                el.modalTitle = document.getElementById('modal-title');
+                el.modalBody = document.getElementById('modal-body');
+                el.modalFooter = document.getElementById('modal-footer');
+                el.modalCloseBtn = document.getElementById('modal-close-btn');
+            },
+
+            /**
+             * Binds all necessary event listeners to the cached DOM elements.
+             */
+            bindEventListeners() {
+                const el = this.elements;
+                el.lookupButton.addEventListener('click', () => this.getCallookInfo());
+                el.callsignInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); this.getCallookInfo(); } });
+                el.logQSOButton.addEventListener('click', () => this.logQSO());
+                el.creditsButton.addEventListener('click', () => this.displayCreditsModal());
+                el.displayOptionsButton.addEventListener('click', () => this.displayDisplayOptionsModal());
+                el.modalCloseBtn.addEventListener('click', () => this.closeModal());
+                el.modalOverlay.addEventListener('click', () => this.closeModal());
+                el.csvFileInput.addEventListener('change', (event) => this.handleFileImport(event));
+                el.infoToggle.addEventListener('click', () => {
+                    const isHidden = el.infoContentDetails.classList.toggle('hidden');
+                    el.infoChevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+                });
+
+                // --- Log Actions Logic ---
+                el.logActionsButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (window.innerWidth < 1024) { 
+                        this.displayLogActionsModal();
+                    } else {
+                        const isHidden = el.logActionsMenu.classList.toggle('hidden');
+                        el.logActionsButton.querySelector('svg').style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+                    }
+                });
+
+                el.importLogDropdownButton.addEventListener('click', () => el.csvFileInput.click());
+                el.exportADIFDropdownButton.addEventListener('click', () => this.exportQSOLogToADIF());
+                el.exportCSVDropdownButton.addEventListener('click', () => this.exportQSOLogToCSV());
+                el.clearLogDropdownButton.addEventListener('click', () => this.handleClearLog());
+                
+                el.logActionsMenu.addEventListener('click', () => {
+                    el.logActionsMenu.classList.add('hidden');
+                    el.logActionsButton.querySelector('svg').style.transform = 'rotate(0deg)';
+                });
+
+                window.addEventListener('click', () => {
+                    if (!el.logActionsMenu.classList.contains('hidden')) {
+                        el.logActionsMenu.classList.add('hidden');
+                        el.logActionsButton.querySelector('svg').style.transform = 'rotate(0deg)';
+                    }
+                });
+            },
+            
+            loadInitialState() {
+                const keys = this.config.localStorageKeys;
+                this.state.qsoLog = JSON.parse(localStorage.getItem(keys.qsoLog) || '[]');
+                this.elements.operatorCallsignInput.value = localStorage.getItem(keys.operatorCallsign) || '';
+                this.elements.myGridsquareInput.value = localStorage.getItem(keys.myGridsquare) || '';
+                this.elements.frequencyInput.value = localStorage.getItem(keys.frequency) || '';
+                // Size is set in the head script to prevent flash of wrong size.
+            },
+
+            render() {
+                this.renderLog();
+            },
+
+            renderLog() {
+                const { logTableBody, mobileLogList, qsoCountValue } = this.elements;
+                logTableBody.innerHTML = "";
+                mobileLogList.innerHTML = "";
+                qsoCountValue.textContent = this.state.qsoLog.length;
+
+                if (this.state.qsoLog.length === 0) {
+                    const noLogMessage = `<td colspan="5" class="text-center text-slate-500 dark:text-slate-400 py-10">Your log is empty.</td>`;
+                    logTableBody.innerHTML = `<tr>${noLogMessage}</tr>`;
+                    mobileLogList.innerHTML = `<div class="text-center text-slate-500 dark:text-slate-400 py-10">Your log is empty.</div>`;
+                    return;
+                }
+
+                [...this.state.qsoLog].reverse().forEach((qso, displayIndex) => {
+                    const originalIndex = this.state.qsoLog.length - 1 - displayIndex;
+                    logTableBody.insertAdjacentHTML('beforeend', this.getDesktopLogRowHTML(qso, originalIndex));
+                    mobileLogList.insertAdjacentHTML('beforeend', this.getMobileLogCardHTML(qso, originalIndex));
+                });
+            },
+
+            getDesktopLogRowHTML(qso, index) {
+                const actionsHTML = `
+                    <div class="flex items-center gap-2">
+                        <button onclick="SimpleLogger.displayViewModal(${index})" class="text-xs bg-slate-200 text-slate-800 font-semibold px-2 py-1 rounded-md hover:bg-slate-300 transition-colors dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">View</button>
+                        <button onclick="SimpleLogger.displayEditModal(${index})" class="text-xs bg-blue-600 text-white font-semibold px-2 py-1 rounded-md hover:bg-blue-700 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700">Edit</button>
+                        <button onclick="SimpleLogger.handleDeleteQSO(${index})" class="text-xs bg-red-600 text-white font-semibold px-2 py-1 rounded-md hover:bg-red-700 transition-colors dark:bg-red-600 dark:hover:bg-red-700">Delete</button>
+                    </div>`;
+                return `
+                    <tr class="bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/50">
+                        <td class="px-4 py-3">${qso.date || ''}</td>
+                        <td class="px-4 py-3">${qso.time || ''}</td>
+                        <td class="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">${qso.callsign || ''}</td>
+                        <td class="px-4 py-3">${qso.frequency || ''}</td>
+                        <td class="px-4 py-3">${actionsHTML}</td>
+                    </tr>`;
+            },
+            
+            getMobileLogCardHTML(qso, index) {
+                 return `
+                    <div class="bg-white p-4 rounded-lg shadow-sm dark:bg-slate-800">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-bold text-lg text-slate-800 dark:text-slate-100">${qso.callsign}</p>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">${qso.date} at ${qso.time} UTC</p>
+                            </div>
+                            <p class="text-sm font-medium bg-blue-100 text-blue-800 px-2 py-1 rounded-full whitespace-nowrap dark:bg-blue-900 dark:text-blue-200">${qso.mode}</p>
+                        </div>
+                        <p class="mt-2 text-slate-600 dark:text-slate-300">${qso.frequency}</p>
+                        <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                            <button onclick="SimpleLogger.displayViewModal(${index})" class="flex-1 text-sm bg-slate-200 text-slate-800 font-semibold px-3 py-1.5 rounded-md hover:bg-slate-300 transition-colors dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">View</button>
+                            <button onclick="SimpleLogger.displayEditModal(${index})" class="flex-1 text-sm bg-blue-600 text-white font-semibold px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700">Edit</button>
+                            <button onclick="SimpleLogger.handleDeleteQSO(${index})" class="flex-1 text-sm bg-red-600 text-white font-semibold px-3 py-1.5 rounded-md hover:bg-red-700 transition-colors dark:bg-red-600 dark:hover:bg-red-700">Delete</button>
+                        </div>
+                    </div>`;
+            },
+
+            // --- Core Application Logic ---
+
+            handleFileImport(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try { this.processImportedCSV(e.target.result); } 
+                    catch (error) {
+                        console.error("Error processing CSV:", error);
+                        this.showToast("Failed to process the CSV file.", "error");
+                    }
+                };
+                reader.onerror = () => this.showToast("Failed to read the file.", "error");
+                reader.readAsText(file);
+                event.target.value = null;
+            },
+
+            processImportedCSV(csvText) {
+                const lines = csvText.trim().split(/\r?\n/);
+                if (lines.length < 2) return this.showToast("CSV must have a header and at least one QSO.", "error");
+                const header = lines.shift().split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                const requiredHeaders = ['date', 'time', 'callsign', 'operator'];
+                if (!requiredHeaders.every(h => header.includes(h))) return this.showToast("CSV header is missing required columns (date, time, callsign, operator).", "error");
+                const importedQsos = lines.map(line => {
+                    const values = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || [];
+                    if (values.length !== header.length) return null;
+                    const qso = {};
+                    header.forEach((key, index) => {
+                        const value = values[index] || '';
+                        qso[key] = value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1).replace(/""/g, '"') : value;
+                    });
+                    return qso;
+                }).filter(Boolean);
+                if (importedQsos.length === 0) return this.showToast("No valid QSO entries found in the file.", "error");
+                this.displayImportConfirmModal(importedQsos);
+            },
+
+            displayImportConfirmModal(newQsos) {
+                const bodyHTML = `<p class="text-sm text-slate-600 dark:text-slate-300">You are about to import <strong class="text-slate-800 dark:text-slate-100">${newQsos.length} QSOs</strong>.</p><p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Would you like to merge them with your current log or replace it entirely?</p>`;
+                const footerHTML = `<button id="modalCancel" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Cancel</button><button id="modalReplace" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 rounded-md transition">Replace</button><button id="modalMerge" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 rounded-md transition">Merge</button>`;
+                this.openModal({ title: 'Confirm Import', body: bodyHTML, footer: footerHTML });
+                document.getElementById('modalMerge').addEventListener('click', () => {
+                    this.state.qsoLog.push(...newQsos);
+                    this.saveAndRerender(`Merged ${newQsos.length} QSOs successfully.`);
+                }, { once: true });
+                document.getElementById('modalReplace').addEventListener('click', () => {
+                    this.state.qsoLog = newQsos;
+                    this.saveAndRerender(`Replaced log with ${newQsos.length} QSOs.`);
+                }, { once: true });
+                document.getElementById('modalCancel').addEventListener('click', () => this.closeModal(), { once: true });
+            },
+
+            saveAndRerender(successMessage) {
+                this.saveStateToLocalStorage();
+                this.render();
+                this.closeModal();
+                this.showToast(successMessage, 'success');
+            },
+
+            async getCallookInfo() {
+                const callsign = this.elements.callsignInput.value.trim().toUpperCase();
+                if (!callsign) return this.showToast("Please enter a callsign to lookup.", "error");
+                
+                this.elements.callsignInfo.classList.add('hidden');
+                this.elements.nameInput.value = '';
+                this.elements.opponentGridsquareInput.value = '';
+
+                try {
+                    const response = await fetch(`${this.config.callookApiBaseUrl}${callsign}/json`);
+                    if (!response.ok) throw new Error(`Network Error: ${response.statusText}`);
+                    const data = await response.json();
+                    if (data.status !== "VALID") throw new Error(data.detail === "No results found for query." ? `Callsign not found in US database.` : `Callook API Status: ${data.status}.`);
+                    this.state.currentCallookInfo = data;
+                    this.updateInfoPanels({data});
+                    this.autoFillFormFields(data);
+                } catch (error) {
+                    console.error("Error fetching Callook data:", error);
+                    this.showToast(error.message, "error");
+                    this.state.currentCallookInfo = null;
+                    this.updateInfoPanels({error, callsign});
+                }
+            },
+
+            updateInfoPanels({data = null, error = null, callsign = ''}) {
+                const { callsignInfo, callsignInfoTitle, infoSummary, infoContentDetails } = this.elements;
+                let detailsHTML = '';
+
+                if (data) { // Success case
+                    const getInfoValue = (path) => path.split('.').reduce((acc, part) => acc?.[part], data) || "N/A";
+                    const displayFields = [ { label: "Callsign", path: "current.callsign" }, { label: "Name", path: "name" }, { label: "Address", path: "address.line2" }, { label: "Gridsquare", path: "location.gridsquare" }, { label: "ULS License", path: "otherInfo.ulsUrl", isLink: true }];
+                    detailsHTML = displayFields.map(field => {
+                        const value = getInfoValue(field.path);
+                        if (value === "N/A") return '';
+                        const displayValue = field.isLink ? `<a href='${value}' target='_blank' class="text-blue-600 dark:text-blue-400 hover:underline">View on ULS</a>` : value;
+                        return `<div class='grid grid-cols-3 gap-2'><span class='font-semibold text-slate-600 dark:text-slate-300 col-span-1'>${field.label}</span> <span class="col-span-2">${displayValue}</span></div>`;
+                    }).join('');
+                    callsignInfoTitle.textContent = 'Lookup Successful';
+                    infoSummary.textContent = `✅ Autofilled ${data.current.callsign}. Expand for details.`;
+                } else { // Error / Manual lookup case
+                    detailsHTML = `<div class="text-center text-slate-500 dark:text-slate-400 space-y-3"><p>You can continue to log this contact manually, or use this link for an optional lookup on QRZ.com.</p><a href="https://www.qrz.com/db/${callsign}" target="_blank" class="inline-block font-semibold text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md transition-colors">Look up ${callsign} on QRZ.com</a></div>`;
+                    callsignInfoTitle.textContent = 'Manual Lookup';
+                    infoSummary.textContent = 'No data found. Expand for manual lookup options.';
+                }
+
+                infoContentDetails.innerHTML = detailsHTML;
+                callsignInfo.classList.remove('hidden');
+            },
+            
+            autoFillFormFields(data) {
+                const getInfoValue = (path) => path.split('.').reduce((acc, part) => acc?.[part], data) || "N/A";
+                const name = getInfoValue('name');
+                if (name !== "N/A") this.elements.nameInput.value = name;
+                const gridsquare = getInfoValue('location.gridsquare');
+                if (gridsquare && gridsquare !== "N/A") {
+                    this.elements.opponentGridsquareInput.value = gridsquare;
+                }
+            },
+            
+            logQSO() {
+                const operatorCallsign = this.elements.operatorCallsignInput.value.trim().toUpperCase();
+                if (!operatorCallsign) return this.showToast("Your callsign is required.", "error");
+                const callsignToLog = (this.state.currentCallookInfo?.current.callsign || this.elements.callsignInput.value.trim()).toUpperCase();
+                if (!callsignToLog) return this.showToast("Contact's callsign is required.", "error");
+                
+                const now = new Date();
+                const qso = {
+                    date: now.toISOString().slice(0, 10), time: now.toISOString().slice(11, 16),
+                    callsign: callsignToLog, name: this.elements.nameInput.value.trim(),
+                    frequency: this.elements.frequencyInput.value.trim(), mode: this.elements.modeSelect.value,
+                    rstSent: this.elements.rstSentInput.value.trim(), rstReceived: this.elements.rstReceivedInput.value.trim(),
+                    myGridsquare: this.elements.myGridsquareInput.value.trim().toUpperCase(), gridsquare: this.elements.opponentGridsquareInput.value.trim().toUpperCase(),
+                    notes: this.elements.notesInput.value.trim(), operator: operatorCallsign
+                };
+
+                this.state.qsoLog.push(qso);
+                this.saveStateToLocalStorage();
+                this.render();
+                this.clearQSOInputFields();
+                this.state.currentCallookInfo = null;
+                this.elements.callsignInfo.classList.add("hidden");
+                this.showToast("QSO successfully logged!", "success");
+            },
+            
+            saveQSOChanges(index) {
+                const form = document.getElementById('editQSOForm');
+                const updatedQso = {
+                    date: form.editDate.value, time: form.editTime.value, callsign: form.editCallsign.value.trim().toUpperCase(),
+                    name: form.editName.value.trim(), frequency: form.editFrequency.value.trim(), mode: form.editMode.value,
+                    rstSent: form.editRstSent.value.trim(), rstReceived: form.editRstReceived.value.trim(),
+                    myGridsquare: form.editMyGridsquare.value.trim().toUpperCase(), gridsquare: form.editGridsquare.value.trim().toUpperCase(),
+                    notes: form.editNotes.value.trim(), operator: form.editOperatorCallsign.value.trim().toUpperCase()
+                };
+                if (!updatedQso.callsign || !updatedQso.operator) return this.showToast('Callsign and Operator callsign are required.', 'error');
+                this.state.qsoLog[index] = updatedQso;
+                this.saveStateToLocalStorage();
+                this.render();
+                this.closeModal();
+                this.showToast('QSO updated successfully!', 'success');
+            },
+
+            deleteQSO(index) {
+                this.state.qsoLog.splice(index, 1);
+                this.saveStateToLocalStorage();
+                this.render();
+                this.closeModal();
+                this.showToast('QSO has been deleted.', 'success');
+            },
+
+            handleClearLog() {
+                this.displayConfirmModal({
+                    title: 'Clear QSO Log', message: 'Are you sure? This will permanently delete all logged QSOs.', confirmText: 'Clear Log',
+                    onConfirm: () => {
+                        this.state.qsoLog = []; this.saveStateToLocalStorage(); this.render();
+                        this.showToast('QSO log has been cleared.', 'success'); this.closeModal();
+                    }
+                });
+            },
+
+            handleDeleteQSO(index) {
+                const qso = this.state.qsoLog[index];
+                if (!qso) return;
+                this.displayConfirmModal({
+                    title: 'Delete QSO', message: `Are you sure you want to delete the log for ${qso.callsign}? This cannot be undone.`, confirmText: 'Delete',
+                    onConfirm: () => this.deleteQSO(index),
+                });
+            },
+            
+            clearQSOInputFields() {
+                const el = this.elements;
+                el.callsignInput.value = ""; el.nameInput.value = ""; el.opponentGridsquareInput.value = "";
+                el.rstSentInput.value = ""; el.rstReceivedInput.value = ""; el.notesInput.value = "";
+                el.modeSelect.value = "SSB"; el.callsignInput.focus();
+            },
+
+            saveStateToLocalStorage() {
+                const keys = this.config.localStorageKeys;
+                localStorage.setItem(keys.qsoLog, JSON.stringify(this.state.qsoLog));
+                localStorage.setItem(keys.operatorCallsign, this.elements.operatorCallsignInput.value);
+                localStorage.setItem(keys.myGridsquare, this.elements.myGridsquareInput.value);
+                localStorage.setItem(keys.frequency, this.elements.frequencyInput.value);
+            },
+            
+            openModal({ title, body, footer }) {
+                this.elements.modalTitle.textContent = title;
+                this.elements.modalBody.innerHTML = body;
+                this.elements.modalFooter.innerHTML = footer;
+                this.elements.modal.classList.remove('hidden');
+            },
+
+            closeModal() {
+                this.elements.modal.classList.add('hidden');
+                this.elements.modalBody.innerHTML = '';
+                this.elements.modalFooter.innerHTML = '';
+            },
+
+            displayViewModal(index) {
+                const qso = this.state.qsoLog[index];
+                if (!qso) return;
+                const details = [
+                    { label: 'Callsign', value: qso.callsign }, { label: 'Name', value: qso.name }, { label: 'Date', value: qso.date },
+                    { label: 'Time (UTC)', value: qso.time }, { label: 'Frequency/Band', value: qso.frequency }, { label: 'Mode', value: qso.mode },
+                    { label: 'RST Sent', value: qso.rstSent }, { label: 'RST Received', value: qso.rstReceived }, { label: 'Their Grid', value: qso.gridsquare },
+                    { label: 'My Callsign', value: qso.operator }, { label: 'My Grid', value: qso.myGridsquare },
+                ];
+                let bodyHTML = details.map(d => `<div class="grid grid-cols-3 gap-2"><span class="font-semibold text-slate-600 dark:text-slate-300 col-span-1">${d.label}</span><span class="col-span-2 text-slate-800 dark:text-slate-100">${d.value || '--'}</span></div>`).join('');
+                if (qso.notes) bodyHTML += `<div class="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700"><p class="font-semibold text-slate-600 dark:text-slate-300 mb-1">Notes</p><p class="whitespace-pre-wrap text-slate-800 dark:text-slate-100">${qso.notes}</p></div>`;
+                else bodyHTML += `<div class="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700"><p class="font-semibold text-slate-600 dark:text-slate-300 mb-1">Notes</p><p class="text-slate-500 italic dark:text-slate-400">No notes for this QSO.</p></div>`;
+                const footerHTML = `<button onclick="SimpleLogger.closeModal()" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Close</button>`;
+                this.openModal({ title: 'QSO Details', body: bodyHTML, footer: footerHTML });
+            },
+
+            displayEditModal(index) {
+                 const qso = this.state.qsoLog[index];
+                 if (!qso) return;
+                 const bodyHTML = `<form id="editQSOForm"><div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4"><div><label for="editDate" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Date</label><input type="date" id="editDate" name="editDate" value="${qso.date}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div><label for="editTime" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Time (UTC)</label><input type="time" id="editTime" name="editTime" value="${qso.time}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div class="md:col-span-2"><label for="editCallsign" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Callsign</label><input type="text" id="editCallsign" name="editCallsign" value="${qso.callsign}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div class="md:col-span-2"><label for="editName" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Name</label><input type="text" id="editName" name="editName" value="${qso.name !== 'N/A' ? qso.name || '' : ''}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div><label for="editOperatorCallsign" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">My Callsign</label><input type="text" id="editOperatorCallsign" name="editOperatorCallsign" value="${qso.operator}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div><label for="editMyGridsquare" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">My Grid</label><input type="text" id="editMyGridsquare" name="editMyGridsquare" value="${qso.myGridsquare}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div><label for="editFrequency" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Frequency/Band</label><input type="text" id="editFrequency" name="editFrequency" value="${qso.frequency}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div><label for="editMode" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Mode</label><select id="editMode" name="editMode" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200">${this.elements.modeSelect.innerHTML}</select></div><div><label for="editGridsquare" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Their Grid</label><input type="text" id="editGridsquare" name="editGridsquare" value="${qso.gridsquare}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div><label for="editRstSent" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">RST Sent</label><input type="text" id="editRstSent" name="editRstSent" value="${qso.rstSent}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div><label for="editRstReceived" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">RST Rcvd</label><input type="text" id="editRstReceived" name="editRstReceived" value="${qso.rstReceived}" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"></div><div class="md:col-span-2"><label for="editNotes" class="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Notes</label><textarea id="editNotes" name="editNotes" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none transition dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200">${qso.notes || ''}</textarea></div></div></form>`;
+                const footerHTML = `<button onclick="SimpleLogger.closeModal()" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Cancel</button><button onclick="SimpleLogger.saveQSOChanges(${index})" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 rounded-md transition">Save Changes</button>`;
+                this.openModal({ title: 'Edit QSO', body: bodyHTML, footer: footerHTML });
+                document.getElementById('editMode').value = qso.mode; // Set the selected mode
+            },
+
+            displayLogActionsModal() {
+                const bodyHTML = `<div class="flex flex-col gap-3"><button id="modalImportCSV" class="w-full text-center px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Import CSV</button><button id="modalExportADIF" class="w-full text-center px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Export ADIF</button><button id="modalExportCSV" class="w-full text-center px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Export CSV</button><div class="border-t my-1 border-slate-200 dark:border-slate-600"></div><button id="modalClearLog" class="w-full text-center px-4 py-2.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition dark:bg-red-600 dark:hover:bg-red-700">Clear Log</button></div>`;
+                const footerHTML = `<button onclick="SimpleLogger.closeModal()" class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Cancel</button>`;
+                this.openModal({ title: 'Log Actions', body: bodyHTML, footer: footerHTML });
+
+                document.getElementById('modalImportCSV').addEventListener('click', () => { this.closeModal(); this.elements.csvFileInput.click(); });
+                document.getElementById('modalExportADIF').addEventListener('click', () => { this.closeModal(); this.exportQSOLogToADIF(); });
+                document.getElementById('modalExportCSV').addEventListener('click', () => { this.closeModal(); this.exportQSOLogToCSV(); });
+                document.getElementById('modalClearLog').addEventListener('click', () => { this.closeModal(); this.handleClearLog(); });
+            },
+
+            displayConfirmModal({ title, message, confirmText, onConfirm }) {
+                const bodyHTML = `<p class="text-sm text-slate-600 dark:text-slate-300">${message}</p>`;
+                const footerHTML = `<button id="modalCancel" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Cancel</button><button id="modalConfirm" class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 rounded-md transition">${confirmText}</button>`;
+                this.openModal({ title, body: bodyHTML, footer: footerHTML });
+                document.getElementById('modalConfirm').addEventListener('click', onConfirm, { once: true });
+                document.getElementById('modalCancel').addEventListener('click', () => this.closeModal(), { once: true });
+            },
+            
+            displayCreditsModal() {
+                const bodyHTML = `<div class="space-y-4">
+                    <div>
+                        <h4 class="font-semibold text-slate-800 dark:text-slate-100">APIs Used</h4>
+                        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">This application uses the <a href="https://callook.info" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">Callook.info API</a> for amateur radio callsign lookups.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-slate-800 dark:text-slate-100">Development</h4>
+                        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Developed by K7TDR in partnership with Gemini.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-slate-800 dark:text-slate-100">Open Source</h4>
+                        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">This program is free to use, improve, or modify in any way you see fit. You can view the project on <a href="https://github.com/trevordmray/SimpleLoggerWeb" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">GitHub</a>.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-slate-800 dark:text-slate-100">Standards & Libraries</h4>
+                        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">This application uses the <a href="https://www.adif.org/" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">Amateur Data Interchange Format (ADIF)</a> for log exporting.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-slate-800 dark:text-slate-100">Version</h4>
+                        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">SLWA2025.09</p>
+                    </div>
+                </div>`;
+                const footerHTML = `<button onclick="SimpleLogger.closeModal()" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Close</button>`;
+                this.openModal({ title: 'Credits', body: bodyHTML, footer: footerHTML });
+            },
+
+            displayDisplayOptionsModal() {
+                const keys = this.config.localStorageKeys;
+                const currentSize = localStorage.getItem(keys.displaySize) || 'md';
+                const isDarkMode = document.documentElement.classList.contains('dark');
+                
+                const bodyHTML = `
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="font-semibold text-slate-800 dark:text-slate-100 mb-2">UI Size</h4>
+                            <div class="flex items-center gap-2" id="size-options">
+                                <button data-size="sm" class="flex-1 px-3 py-1.5 text-sm rounded-md transition">Small</button>
+                                <button data-size="md" class="flex-1 px-3 py-1.5 text-sm rounded-md transition">Medium</button>
+                                <button data-size="lg" class="flex-1 px-3 py-1.5 text-sm rounded-md transition">Large</button>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-800 dark:text-slate-100 mb-2">Theme</h4>
+                            <button id="modalDarkModeToggle" class="w-full px-4 py-2.5 text-sm font-medium rounded-md transition">
+                                Toggle Dark Mode
+                            </button>
+                        </div>
+                    </div>`;
+                const footerHTML = `<button onclick="SimpleLogger.closeModal()" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">Close</button>`;
+                this.openModal({ title: 'Display Options', body: bodyHTML, footer: footerHTML });
+                
+                // Set initial state for modal buttons
+                this.updateDisplayOptionsModalState();
+                
+                // Add event listeners for modal buttons
+                document.getElementById('size-options').addEventListener('click', (e) => {
+                    if (e.target.dataset.size) {
+                        this.setDisplaySize(e.target.dataset.size);
+                    }
+                });
+                document.getElementById('modalDarkModeToggle').addEventListener('click', () => {
+                    this.toggleDarkMode();
+                });
+            },
+
+            updateDisplayOptionsModalState() {
+                const modal = document.getElementById('modal');
+                if (modal.classList.contains('hidden')) return;
+
+                const keys = this.config.localStorageKeys;
+                const currentSize = localStorage.getItem(keys.displaySize) || 'md';
+                const isDarkMode = document.documentElement.classList.contains('dark');
+                
+                const sizeButtons = modal.querySelectorAll('[data-size]');
+                sizeButtons.forEach(button => {
+                    const isSelected = button.dataset.size === currentSize;
+                    button.className = 'flex-1 px-3 py-1.5 text-sm rounded-md transition ' + (isSelected
+                        ? 'bg-blue-600 text-white font-semibold'
+                        : 'bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200');
+                });
+                
+                const toggleButton = document.getElementById('modalDarkModeToggle');
+                toggleButton.className = 'w-full px-4 py-2.5 text-sm font-medium rounded-md transition ' + (isDarkMode
+                    ? 'bg-slate-600 text-slate-200 hover:bg-slate-700'
+                    : 'bg-slate-200 text-slate-800 hover:bg-slate-300');
+                toggleButton.textContent = isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+            },
+
+            setDisplaySize(size) {
+                const keys = this.config.localStorageKeys;
+                const sizeMap = { sm: '12px', md: '15px', lg: '18px' };
+                document.documentElement.style.fontSize = sizeMap[size];
+                localStorage.setItem(keys.displaySize, size);
+                this.updateDisplayOptionsModalState();
+            },
+
+            toggleDarkMode() {
+                const isDark = document.documentElement.classList.toggle('dark');
+                localStorage.setItem(this.config.localStorageKeys.theme, isDark ? 'dark' : 'light');
+                this.updateDisplayOptionsModalState();
+            },
+            
+            toastTimeout: null,
+            showToast(message, type = 'success') {
+                const { toast, toastMessage, toastIcon } = this.elements;
+                clearTimeout(this.toastTimeout);
+                toastMessage.textContent = message;
+                toast.classList.remove('bg-red-100', 'text-red-700', 'dark:bg-red-900/50', 'dark:text-red-300');
+                if (type === 'error') {
+                    toastIcon.textContent = '❌';
+                    toast.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/50', 'dark:text-red-300');
+                } else {
+                    toastIcon.textContent = '✅';
+                }
+                toast.classList.remove('opacity-0', 'translate-y-5', 'pointer-events-none');
+                this.toastTimeout = setTimeout(() => {
+                    toast.classList.add('opacity-0', 'translate-y-5');
+                    toast.classList.add('pointer-events-none');
+                }, 3000);
+            },
+            
+            mapFrequencyToBand(frequencyOrBand) {
+                if (!frequencyOrBand) return null;
+                const fob = String(frequencyOrBand).toLowerCase().trim();
+                const knownBands = ["160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "4m", "2m", "1.25m", "70cm", "33cm", "23cm", "13cm"];
+                if (knownBands.includes(fob)) return fob;
+                const freqMHz = parseFloat(fob);
+                if (isNaN(freqMHz)) return null;
+                const bands = { "160m": [1.8, 2.0], "80m": [3.5, 4.0], "60m": [5.06, 5.45], "40m": [7.0, 7.3], "30m": [10.1, 10.15], "20m": [14.0, 14.35], "17m": [18.068, 18.168], "15m": [21.0, 21.45], "12m": [24.89, 24.99], "10m": [28.0, 29.7], "6m": [50, 54], "2m": [144, 148], "70cm": [420, 450] };
+                for (const band in bands) { if (freqMHz >= bands[band][0] && freqMHz <= bands[band][1]) return band; }
+                return null;
+            },
+
+            downloadFile(content, filename, contentType) {
+                const blob = new Blob([content], { type: contentType });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+            },
+            
+            exportQSOLogToCSV() {
+                if (this.state.qsoLog.length === 0) return this.showToast("Log is empty. Nothing to export.", "error");
+                const headers = Object.keys(this.state.qsoLog[0]);
+                const csvHeader = headers.join(",");
+                const csvRows = this.state.qsoLog.map(qso => headers.map(header => `"${String(qso[header] || '').replace(/"/g, '""')}"`).join(","));
+                const csvString = [csvHeader, ...csvRows].join("\r\n");
+                this.downloadFile(csvString, `qso_log_${new Date().toISOString().slice(0, 10)}.csv`, "text/csv;charset=utf-8;");
+            },
+
+            exportQSOLogToADIF() {
+                if (this.state.qsoLog.length === 0) return this.showToast("Log is empty. Nothing to export.", "error");
+                const programVersion = `SLWA2025.09`;
+                const now = new Date();
+                const timestamp = 
+                    now.getUTCFullYear().toString().padStart(4, '0') +
+                    (now.getUTCMonth() + 1).toString().padStart(2, '0') +
+                    now.getUTCDate().toString().padStart(2, '0') +
+                    now.getUTCHours().toString().padStart(2, '0') +
+                    now.getUTCMinutes().toString().padStart(2, '0') +
+                    now.getUTCSeconds().toString().padStart(2, '0');
+
+                let header = `<CREATED_TIMESTAMP:14>${timestamp}\n<ADIF_VER:5>3.1.6\n<PROGRAMID:12>SimpleLogger\n<PROGRAMVERSION:${programVersion.length}>${programVersion}\n<EOH>\n\n`;
+                const addField = (tag, value) => {
+                    if (value) { const valStr = String(value).trim(); if(valStr) return `<${tag}:${valStr.length}>${valStr}\n`; }
+                    return '';
+                };
+                const adifRecords = this.state.qsoLog.map(qso => {
+                    let record = "";
+                    record += addField("QSO_DATE", (qso.date || '').replace(/-/g, ''));
+                    record += addField("TIME_ON", (qso.time || '').replace(/:/g, ''));
+                    record += addField("CALL", qso.callsign);
+                    record += addField("OPERATOR", qso.operator);
+                    const band = this.mapFrequencyToBand(qso.frequency);
+                    if (band) record += addField("BAND", band);
+                    else if (qso.frequency) { const freqMHz = parseFloat(qso.frequency); if (!isNaN(freqMHz)) record += addField("FREQ", freqMHz.toFixed(4)); }
+                    record += addField("MODE", qso.mode);
+                    record += addField("RST_SENT", qso.rstSent);
+                    record += addField("RST_RCVD", qso.rstReceived);
+                    record += addField("MY_GRIDSQUARE", qso.myGridsquare);
+                    record += addField("GRIDSQUARE", qso.gridsquare);
+                    if (qso.name && qso.name !== "N/A") record += addField("NAME", qso.name);
+                    record += addField("NOTES", qso.notes);
+                    return record + "<EOR>\n\n";
+                }).join('');
+                this.downloadFile(header + adifRecords, `qso_log_${new Date().toISOString().slice(0, 10)}.adi`, "application/adif;charset=utf-8;");
+            },
+        };
+
+        // Start the application once the DOM is ready
+        document.addEventListener('DOMContentLoaded', () => SimpleLogger.init());
+    </script>
+</body>
+</html>
+
+
+
